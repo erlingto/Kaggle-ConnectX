@@ -1,2 +1,4 @@
 # Kaggle-ConnectX
-Kaggles ConnectX project
+Kaggle ConnectX Project
+
+Link : https://www.kaggle.com/c/connectx
