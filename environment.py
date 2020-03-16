@@ -48,7 +48,7 @@ class DQN:
         self.optimizer = optim.Adam(self.model.parameters() ,lr = learning_rate)
         self.criterion = nn.MSELoss()
         
-        self.experience = {'prev_obs' : [], 'a' : [], 'r': [], 'obs' : [], 'obs' : [], 'done': [] } 
+        self.experience = {'prev_obs' : [], 'a' : [], 'r': [], 'obs' : [], 'done': [] } 
 
         self.max_exp = max_exp
         self.min_exp = min_exp
@@ -69,29 +69,34 @@ class DQN:
             for i in range(self.num_actions):
                 if state.board[i] != 0:
                     prediction[i] = -1e7
-                return int(np.argmax(prediction))  
+            return int(np.argmax(prediction))  
     
     def add_experience(self, exp):
-        if len(self.experience['s']) >= self.max_exp:
-            for key in self.experiences.keys():
+        if len(self.experience['prev_obs']) >= self.max_exp:
+            for key in self.experience.keys():
                 self.experience[key].pop(0)
         for key, value in exp.items():
             self.experience[key].append(value)
 
+    def load_weights(self, path):
+        self.model.load_state_dict(torch.load(path))
     def save_weights(self, path):
         torch.save(self.model.state_dict(), path)
+    
+    def copy_weights(self, TrainNet):
+        self.model.load_state_dict(TrainNet.state_dict())
 
     def train(self, TargetNet):
-        if len(self.experience['s']) < self.min_exp:
+        if len(self.experience['prev_obs']) < self.min_exp:
             return 0
         
-        ids =  np.random.randint(low = 0, high = len(self.experience['s'], size = self.batch_size))
-        states = np.asarray([self.preprocess(self.experience['s'][i]) for i in ids])
+        ids =  np.random.randint(low = 0, high = len(self.experience['prev_obs']), size = self.batch_size)
+        states = np.asarray([self.preprocess(self.experience['prev_obs'][i]) for i in ids])
         actions  = np.asarray([self.experience['a'][i] for i in ids])
         rewards = np.asarray([self.experience['r'][i] for i in ids])
 
-        next_states = np.asarray([self.preprocess(self.experience['s2'][i]) for i in ids])
-        dones = np.asarray([self.preprocess(self.experience['done'][i]) for i in ids])
+        next_states = np.asarray([self.preprocess(self.experience['obs'][i]) for i in ids])
+        dones = np.asarray([self.experience['done'][i] for i in ids])
         next_value = np.max(TargetNet.predict(next_states).detach().numpy(), axis = 1)
 
         ''' Q - learning aspect '''
