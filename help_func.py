@@ -42,9 +42,64 @@ def dojo(games, env, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
     for i in range(games):
         epsilon = max(min_epsilon, epsilon*decay)
         total_reward = generate_data(env, TrainNet, TargetNet, epsilon, copy_step)
+        if i%100 == 0:
+            print(total_reward)
 
-def Agent(Model, observation):
-    return Model.get_action(observation)
+def CreateAgent(DQN):
+    layers = []
+    # Get layers' weights
+    
+    layers.extend([
+        DQN.model.fc1.weight.T.tolist(), # weights
+        DQN.model.fc1.bias.tolist(),
+        DQN.model.fc2.weight.T.tolist(), # weights
+        DQN.model.fc2.bias.tolist(),
+        DQN.model.fc3.weight.T.tolist(), # weights
+        DQN.model.fc3.bias.tolist(), # bias
+        ])
+    # Convert all layers into usable form before integrating to final agent
+    layers = list(map(
+        lambda x: str(list(np.round(x, 7))) \
+            .replace('array(', '').replace(')', '') \
+            .replace(' ', '') \
+            .replace('\n', ''),
+        layers
+    ))
+    layers = np.reshape(layers, (-1, 2))
+
+    # Create the agent
+    my_agent = '''def my_agent(observation, configuration):
+    import numpy as np
+    '''
+
+    # Write hidden layers
+    for i, (w, b) in enumerate(layers[:]):
+        my_agent += 'hl{}_w = np.array({}, dtype=np.float32)\n'.format(i+1, w)
+        my_agent += '    '
+        my_agent += 'hl{}_b = np.array({}, dtype=np.float32)\n'.format(i+1, b)
+        my_agent += '    '
+   
+    my_agent += '''
+    state = observation.board[:]
+    state.append(observation.mark)
+    out = np.array(state, dtype=np.float32)
+    '''
+
+    # Calculate hidden layers
+    for i in range(len(layers[:-1])):
+        my_agent += '    out = np.matmul(out, hl{0}_w) + hl{0}_b\n'.format(i+1)
+        my_agent += '    out = 1/(1 + np.exp(-out))\n' # Sigmoid function
+    # Calculate output layer
+    my_agent += '   out = np.matmul(out, hl{0}_w) + hl{0}_b\n'.format(i+2)
+    my_agent += '''
+    for i in range(configuration.columns):
+        if observation.board[i] != 0:
+            out[i] = -1e7
+
+    return int(np.argmax(out))
+    '''
+    with open('submission.py', 'w') as f:
+        f.write(my_agent)
 
 def playversus(model):
     env = make('connectx', debug  = False)
