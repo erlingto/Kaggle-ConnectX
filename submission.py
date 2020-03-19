@@ -10,11 +10,11 @@ def my_agent(observation, configuration):
     state = observation.board[:]
     state.append(observation.mark)
     out = np.array(state, dtype=np.float32)
-    out = np.matmul(out, hl1_w) + hl1_b
+        out = np.matmul(out, hl1_w) + hl1_b
     out = 1/(1 + np.exp(-out))
     out = np.matmul(out, hl2_w) + hl2_b
     out = 1/(1 + np.exp(-out))
-    out = np.matmul(out, hl3_w) + hl3_b
+   out = np.matmul(out, hl3_w) + hl3_b
 
     for i in range(configuration.columns):
         if observation.board[i] != 0:

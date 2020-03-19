@@ -1,4 +1,5 @@
 import environment
+import types
 import torch
 import network
 import numpy as np
@@ -90,7 +91,7 @@ def CreateAgent(DQN):
         my_agent += '    out = np.matmul(out, hl{0}_w) + hl{0}_b\n'.format(i+1)
         my_agent += '    out = 1/(1 + np.exp(-out))\n' # Sigmoid function
     # Calculate output layer
-    my_agent += '   out = np.matmul(out, hl{0}_w) + hl{0}_b\n'.format(i+2)
+    my_agent += '    out = np.matmul(out, hl{0}_w) + hl{0}_b\n'.format(i+2)
     my_agent += '''
     for i in range(configuration.columns):
         if observation.board[i] != 0:
@@ -124,3 +125,34 @@ def playversus(model):
     
     print("Done")
     env.render()
+
+
+
+ 
+def create_function(name, args, variables):
+    variable1 = variables[0]
+    variable2 = variables[1]
+    variable3 = variables[2]
+    def y(number, variable1):
+        variable1 = variable1
+        return variable1 * number
+ 
+    y_code = types.CodeType(args, y.__code__.co_kwonlyargcount, \
+                y.__code__.co_nlocals, \
+                y.__code__.co_stacksize, \
+                y.__code__.co_flags, \
+                y.__code__.co_code, \
+                y.__code__.co_consts, \
+                y.__code__.co_names, \
+                y.__code__.co_varnames, \
+                y.__code__.co_filename, \
+                name, \
+                y.__code__.co_firstlineno, \
+                y.__code__.co_lnotab)
+    
+ 
+    return types.FunctionType(y_code, y.__globals__, name)
+ 
+myfunc = create_function('myfunc', 2, [2,3,4])
+ 
+print('ut',myfunc(3))
