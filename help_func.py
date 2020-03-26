@@ -21,30 +21,37 @@ def generate_data(env, TrainNet, TargetNet, epsilon, copy_step):
         observations, reward, done, _ = env.step(action)
 
         if done:
-            env.render()
             if reward == 1:
                 reward = 30
             elif reward == 0:
                 reward = -30
             else :
                 reward = 13
+            rewards += reward
 
         exp = {'prev_obs': prev_observations, 'a' : action, 'r': reward, 'obs': observations, 'done' : done }
         TrainNet.add_experience(exp)
 
-        TrainNet.train(TargetNet)
+        loss = TrainNet.train(TargetNet)
         iter += 1
         if iter % copy_step == 0:
             TargetNet.copy_weights(TrainNet)
-    return rewards
+    return rewards, loss
 
 def dojo(games, env, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
     decay = 0.9999
+    total_reward = 0
+    total_loss = 0
     for i in range(games):
         epsilon = max(min_epsilon, epsilon*decay)
-        total_reward = generate_data(env, TrainNet, TargetNet, epsilon, copy_step)
+        reward, loss = generate_data(env, TrainNet, TargetNet, epsilon, copy_step)
+        total_reward += reward
+        total_loss += loss
         if i%100 == 0:
             print(total_reward)
+            print(total_loss)
+            total_loss = 0
+            total_reward = 0
 
 def CreateAgent(DQN):
     layers = []
@@ -153,6 +160,3 @@ def create_function(name, args, variables):
  
     return types.FunctionType(y_code, y.__globals__, name)
  
-myfunc = create_function('myfunc', 2, [2,3,4])
- 
-print('ut',myfunc(3))

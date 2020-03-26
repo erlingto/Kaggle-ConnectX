@@ -114,5 +114,6 @@ class DQN:
         loss = self.criterion(selected_action_values, actual_values)
         loss.backward()
         self.optimizer.step()
+        return loss
         
    

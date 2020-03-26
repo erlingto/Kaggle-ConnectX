@@ -7,6 +7,7 @@ import torch.optim as optim
 import network
 import torch.nn as nn
 import torch
+import environment
 
 
 class ConnectXNetwork2(nn.Module):
@@ -21,13 +22,14 @@ class ConnectXNetwork2(nn.Module):
         x = torch.sigmoid(self.fc2(x))
         x = self.fc3(x)
         return x 
+
     
 class DQN2:
     def __init__(self, num_states, num_actions, gamma, max_exp, min_exp, batch_size, learning_rate):
         self.num_actions = num_actions
         self.batch_size = batch_size
         self.gamma = gamma
-        self.model = network.ConnectXNetwork2(num_states, num_actions)
+        self.model = ConnectXNetwork2(num_states, num_actions)
         self.optimizer = optim.Adam(self.model.parameters() ,lr = learning_rate)
         self.criterion = nn.MSELoss()
         
@@ -41,7 +43,7 @@ class DQN2:
     
     def preprocess(self, state):
         result = state.board[:]
-        result.append(state.mark)
+        result = np.append(result, state.mark)
         return result
 
     def get_action(self, state, epsilon):
@@ -81,6 +83,7 @@ class DQN2:
         next_states = np.asarray([self.preprocess(self.experience['obs'][i]) for i in ids])
         dones = np.asarray([self.experience['done'][i] for i in ids])
         next_value = np.max(TargetNet.predict(next_states).detach().numpy(), axis = 1)
+        
 
         ''' Q - learning aspect '''
         actual_values = np.where(dones, rewards, rewards+self.gamma*next_value)
@@ -97,6 +100,12 @@ class DQN2:
         loss = self.criterion(selected_action_values, actual_values)
         loss.backward()
         self.optimizer.step()
+        return loss
+
+class Observation:
+    def __init__(self, board, mark):
+        self.board = board
+        self.mark = mark
 
 class ConnectXEnvironment:
     def __init__(self, num_columns, num_rows, connect):
@@ -111,20 +120,19 @@ class ConnectXEnvironment:
     def check(self, position):
         column = position % self.num_columns 
         row = int((position - column) / self.num_columns)
+        j = 0
         for i in range(self.num_columns):
-            if self.board[i] == 0:
-                break
-            else:
-                done = True
-                reward = [0.5, 0.5]
+            if not self.board[i] == 0:
+                j +=1
+                if j == self.num_columns:
+                    done = True
+                    reward = [0.5, 0.5]
+                    return done, reward
 
 
         mark = self.board[position]
         reward = [0, 0]
         done = 0
-
-        print(row) 
-        print(self.num_rows-self.connect)
 
         win_condition_up = 1
         win_condition_down = 1
@@ -147,7 +155,6 @@ class ConnectXEnvironment:
         position_down = position 
         position_up = position
         for i in range(self.connect-1):
-            print("i", i)
             ''' right '''
             if column <= self.num_columns - self.connect:
                 position_right = position_right + 1
@@ -223,9 +230,8 @@ class ConnectXEnvironment:
                 if self.board[position_up] == mark:
                     win_condition_up +=1
                     if win_condition_up == self.connect:
-                       
+                        
                         reward[mark - 1] = 1 
-                        done = 1
                         done = True
                         return done, reward
 
@@ -233,7 +239,7 @@ class ConnectXEnvironment:
 
 
     def step(self, action, mark):
-        reward = [0,0]
+        reward = [0.5, 0.5]
         done = False
         valid = True
         if action < self.num_columns + 1:
@@ -245,16 +251,20 @@ class ConnectXEnvironment:
                             break
                 self.board[action + self.num_columns * (k-1)] = mark
                 done, reward = self.check(action + self.num_columns* (k-1))
-                return self.board, valid, done, reward
+                observation = Observation(self.board, mark)
+                
+                return observation, valid, done, reward
             else:
                 print("action is full")
                 valid = False
-                return self.board, valid, done, reward
+                observation = Observation(self.board, mark)
+                return observation, valid, done, reward
         else:
             print("action : ", action, end = '')
             print("is out of bounds")
             valid = False
-            return self.board, valid, done, reward
+            observation = Observation(self.board, mark)
+            return observation, valid, done, reward
     
 
     def render(self):
@@ -277,15 +287,21 @@ class ConnectXEnvironment:
             print('\n', end = '')
             
     def reset(self):
-        self.connect = connect
-        self.num_columns = num_columns
-        self.num_rows = num_rows
-        self.size = num_rows * num_columns
-        self.board = np.zeros(num_columns* num_rows, dtype = int)
+        self.board = np.zeros(self.num_columns* self.num_rows, dtype = int)
         self.marks = [1, 2]
         self.done = False
 
-        return self.board
+        coinflip = np.random.random()
+        
+        if coinflip < 0.5:
+            trainee_mark = 1
+
+        else:
+            trainee_mark = 2
+    
+
+        observations = Observation(self.board, trainee_mark)
+        return observations
 
     
 
@@ -322,66 +338,110 @@ class ConnectXGym2(gym.Env):
     def render(self, **kwargs):
         return self.env.render(**kwargs)
 
-    def generate_data(env, TrainNet, TargetNet, epsilon, copy_step):
+    def generate_data(self, TrainNet, TargetNet, epsilon, copy_step):
         rewards = 0
         iter = 0
         opp_action = 0
         done = False
 
+        env = self.env
+        
         observations = env.reset()
-
-        coinflip = np.random.random()
-        if coinflip < 0.5:
-            trainne_mark = 1
+        
+        if observations.mark == 1:
             opp_mark = 2
+            trainee_mark = 1     
+
+            while not done:
+                action = TrainNet.get_action(observations, epsilon)
+
+                prev_observations = observations
+        
+                observations, valid, done, reward = env.step(action, trainee_mark)
+                reward = reward[trainee_mark-1]
+                if not done:
+                    ''' opponent makes a move '''
+                    opp_action = self.trainer.get_action(observations, 0)
+
+                    observations, valid, done, reward = env.step(opp_action, opp_mark)
+                    reward = reward[trainee_mark-1]
+
+                if done:
+                    if reward == 1:
+                        reward = 30
+                    elif reward == 0:
+                        reward = -30
+                    else :
+                        reward = 0
+                        env.render()
+
+                    rewards += reward
+
+                exp = {'prev_obs': prev_observations, 'a' : action, 'r': reward, 'obs': observations, 'done' : done }
+                TrainNet.add_experience(exp)
+
+                loss = TrainNet.train(TargetNet)
+                iter += 1
+                if iter % copy_step == 0:
+                    TargetNet.copy_weights(TrainNet)
+            return rewards, loss
         else:
-            trainne_mark = 2
             opp_mark = 1
-
-
-        while not done:
-            action = TrainNet.get_action(observations, epsilon, trainee_mark)
-
-            prev_observations = observations
-    
-            observations, valid, done, reward = env.step(action, trainee_mark)
-
-            ''' opponent makes a move '''
-            opp_action = self.trainer.get_action(observations, epsilon, opp_mark)
+            trainee_mark = 2     
+            
+            opp_action = self.trainer.get_action(observations, 0)
 
             observations, valid, done, reward = env.step(opp_action, opp_mark)
-            observations.appen(trainne_mark)
-            if done:
-                env.render()
-                if reward == 1:
-                    reward = 30
-                elif reward == 0:
-                    reward = -30
-                else :
-                    reward = 13
+            reward = reward[trainee_mark-1]
 
-            exp = {'prev_obs': prev_observations, 'a' : action, 'r': reward, 'obs': observations, 'done' : done }
-            TrainNet.add_experience(exp)
+            while not done:
+                action = TrainNet.get_action(observations, epsilon)
 
-            TrainNet.train(TargetNet)
-            iter += 1
-            if iter % copy_step == 0:
-                TargetNet.copy_weights(TrainNet)
-        return rewards
+                prev_observations = observations
+        
+                observations, valid, done, reward = env.step(action, trainee_mark)
+                reward = reward[trainee_mark-1]
+                if not done:
+                    ''' opponent makes a move '''
+                    opp_action = self.trainer.get_action(observations, 0)
 
-def dojo(games, env, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
-    decay = 0.9999
+                    observations, valid, done, reward = env.step(opp_action, opp_mark)
+                    reward = reward[trainee_mark-1]
+
+                if done:
+                    if reward == 1:
+                        reward = 30
+                    elif reward  == 0:
+                        reward = -30
+                    else :
+                        reward = 13
+                        reward = 0
+                    rewards += reward
+
+                exp = {'prev_obs': prev_observations, 'a' : action, 'r': reward, 'obs': observations, 'done' : done }
+                TrainNet.add_experience(exp)
+
+                loss = TrainNet.train(TargetNet)
+                iter += 1
+                if iter % copy_step == 0:
+                    TargetNet.copy_weights(TrainNet)
+            return rewards, loss
+
+def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
+    total_reward = 0
+    total_loss = 0
+    decay = 0.999
     for i in range(games):
         epsilon = max(min_epsilon, epsilon*decay)
-        total_reward = generate_data(env, TrainNet, TargetNet, epsilon, copy_step)
-    if i%100 == 0:
-        print(total_reward)
-
-
-Opponent = environment.DQN(gym.positions.n, gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-Opponent.load_weights('model')
-
-gym = environment.ConnectXGym2(Opponent)
+        rewards, loss = gym.generate_data(TrainNet, TargetNet, epsilon, copy_step)
+        total_reward += rewards
+        total_loss += loss
+        if i%100 == 0:
+            print('Total Reward:', total_reward)
+            print('Total Loss:',total_loss)
+            total_reward = 0
+            total_loss = 0
+            print(epsilon)
 
 
 gamma = 0.99
@@ -392,17 +452,28 @@ batch_size = 32
 learning_rate = 1e-2
 epsilon = 0.5
 decay = 0.9999
-min_epsilon = 0.1
+min_epsilon = 0.01
 episodes = 200000
 
+'''   
 precision = 7
+template_gym = environment.ConnectXGym()
+Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+Opponent.load_weights('model')
+
+TrainNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+TargetNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+
+training_gym = ConnectXGym2(Opponent)
 
 
 
-TrainNet = environment.DQN(gym.positions.n, gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-TargetNet = environment.DQN(gym.positions.n, gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+dojo(100000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
 
-dojo(20000, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
-TrainNet.save_weights('model')
-
-
+TrainNet.save_weights('trainvsselfmodel')
+'''   
+template_gym = environment.ConnectXGym()
+Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+Opponent.load_weights('model')
+import help_func
+help_func.playversus(Opponent)
