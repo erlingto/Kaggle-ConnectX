@@ -414,7 +414,6 @@ class ConnectXGym2(gym.Env):
                     elif reward  == 0:
                         reward = -30
                     else :
-                        reward = 13
                         reward = 0
                     rewards += reward
 
@@ -446,20 +445,20 @@ def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
 
 gamma = 0.99
 copy_step = 25
-max_exp = 10000
+max_exp = 100000
 min_exp = 100
-batch_size = 32
-learning_rate = 1e-2
+batch_size = 100
+learning_rate = 1e-5
 epsilon = 0.5
-decay = 0.9999
+decay = 0.999999999
 min_epsilon = 0.01
 episodes = 200000
 
-'''   
+'''
 precision = 7
 template_gym = environment.ConnectXGym()
 Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-Opponent.load_weights('model')
+Opponent.load_weights('trainvsselfmodel1')
 
 TrainNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 TargetNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
@@ -468,12 +467,12 @@ training_gym = ConnectXGym2(Opponent)
 
 
 
-dojo(100000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+dojo(25000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
 
-TrainNet.save_weights('trainvsselfmodel')
-'''   
+TrainNet.save_weights('trainvsselfmodel1')
+'''
 template_gym = environment.ConnectXGym()
 Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-Opponent.load_weights('model')
+Opponent.load_weights('trainvsselfmodel1')
 import help_func
 help_func.playversus(Opponent)
