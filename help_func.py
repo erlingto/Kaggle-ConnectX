@@ -63,7 +63,11 @@ def CreateAgent(DQN):
         DQN.model.fc2.weight.T.tolist(), # weights
         DQN.model.fc2.bias.tolist(),
         DQN.model.fc3.weight.T.tolist(), # weights
-        DQN.model.fc3.bias.tolist(), # bias
+        DQN.model.fc3.bias.tolist(),
+        DQN.model.fc4.weight.T.tolist(), # weights
+        DQN.model.fc4.bias.tolist(),
+        DQN.model.fc5.weight.T.tolist(), # weights
+        DQN.model.fc5.bias.tolist(), # bias
         ])
     # Convert all layers into usable form before integrating to final agent
     layers = list(map(

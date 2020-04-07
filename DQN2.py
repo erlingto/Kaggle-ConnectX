@@ -9,18 +9,39 @@ import torch.nn as nn
 import torch
 import environment
 
+def plot_grad_flow(named_parameters):
+    ave_grads = []
+    layers = []
+    for n, p in named_parameters:
+        if(p.requires_grad) and ("bias" not in n):
+            layers.append(n)
+            ave_grads.append(p.grad.abs().mean())
+    plt.plot(ave_grads, alpha=0.3, color="b")
+    plt.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
+    plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+    plt.xlim(xmin=0, xmax=len(ave_grads))
+    plt.xlabel("Layers")
+    plt.ylabel("average gradient")
+    plt.title("Gradient flow")
+    plt.grid(True)
+    return plt
+
 
 class ConnectXNetwork2(nn.Module):
     def __init__(self, num_states, num_actions):
         super(ConnectXNetwork2, self).__init__()
-        self.fc1 = nn.Linear(num_states+1, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_actions)
+        self.fc1 = nn.Linear(num_states+1, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3 = nn.Linear(128, 128)
+        self.fc4 = nn.Linear(128, 128)
+        self.fc5 = nn.Linear(128, num_actions)
     
     def forward(self, x):   
         x = torch.sigmoid(self.fc1(x))
         x = torch.sigmoid(self.fc2(x))
-        x = self.fc3(x)
+        x = torch.sigmoid(self.fc3(x))
+        x = torch.sigmoid(self.fc4(x))
+        x = self.fc5(x)
         return x 
 
     
@@ -325,6 +346,7 @@ class ConnectXEnvironment:
 class ConnectXGym2(gym.Env):
     def __init__(self, trainer):
         self.env = ConnectXEnvironment(7, 6, 4)
+    
         self.trainer = trainer
       
         self.columns = self.env.num_columns
@@ -368,13 +390,13 @@ class ConnectXGym2(gym.Env):
 
                 if done:
                     if reward == 1:
-                        reward = 30
-                    elif reward == 0:
-                        reward = -30
+                        reward = 1
+                    elif reward  == 0:
+                        reward = -1
                     else :
                         reward = 0
                         env.render()
-
+                   
                     rewards += reward
 
                 exp = {'prev_obs': prev_observations, 'a' : action, 'r': reward, 'obs': observations, 'done' : done }
@@ -410,11 +432,12 @@ class ConnectXGym2(gym.Env):
 
                 if done:
                     if reward == 1:
-                        reward = 30
+                        reward = 1
                     elif reward  == 0:
-                        reward = -30
+                        reward = -1
                     else :
                         reward = 0
+                        env.render()
                     rewards += reward
 
                 exp = {'prev_obs': prev_observations, 'a' : action, 'r': reward, 'obs': observations, 'done' : done }
@@ -435,12 +458,17 @@ def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
         rewards, loss = gym.generate_data(TrainNet, TargetNet, epsilon, copy_step)
         total_reward += rewards
         total_loss += loss
-        if i%100 == 0:
+        if i%1000 == 0 and i is not 0:
             print('Total Reward:', total_reward)
             print('Total Loss:',total_loss)
             total_reward = 0
             total_loss = 0
             print(epsilon)
+            plt = plot_grad_flow(TrainNet.model.named_parameters())
+            path = "plot" + str(i)+ ".png"
+            plt.savefig(path)
+
+'''
 
 
 gamma = 0.99
@@ -448,17 +476,15 @@ copy_step = 25
 max_exp = 100000
 min_exp = 100
 batch_size = 100
-learning_rate = 1e-5
+learning_rate = 0.00146
 epsilon = 0.5
-decay = 0.999999999
-min_epsilon = 0.01
+decay = 0.999999999999999
+min_epsilon = 0.05
 episodes = 200000
 
-'''
 precision = 7
 template_gym = environment.ConnectXGym()
 Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-Opponent.load_weights('trainvsselfmodel1')
 
 TrainNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 TargetNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
@@ -467,12 +493,31 @@ training_gym = ConnectXGym2(Opponent)
 
 
 
-dojo(25000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+dojo(50000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+training_gym = ConnectXGym2(Opponent)
+TrainNet.save_weights('fivenet1.0')
+Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+Opponent.load_weights('fivenet1.0')
+training_gym = ConnectXGym2(Opponent)
+dojo(50000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+TrainNet.save_weights('fivenet1.0')
 
-TrainNet.save_weights('trainvsselfmodel1')
-'''
+Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+Opponent.load_weights('fivenet1.0')
+training_gym = ConnectXGym2(Opponent)
+dojo(50000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+TrainNet.save_weights('fivenet1.0')
+Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+Opponent.load_weights('fivenet1.0')
+training_gym = ConnectXGym2(Opponent)
+dojo(50000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+TrainNet.save_weights('fivenet4.0')
+
 template_gym = environment.ConnectXGym()
 Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-Opponent.load_weights('trainvsselfmodel1')
+Opponent.load_weights('fivenet1.0')
 import help_func
 help_func.playversus(Opponent)
+
+'''
