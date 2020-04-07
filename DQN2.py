@@ -454,10 +454,11 @@ def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
     total_loss = 0
     decay = 0.999
     for i in range(games):
-        epsilon = max(min_epsilon, epsilon*decay)
         rewards, loss = gym.generate_data(TrainNet, TargetNet, epsilon, copy_step)
         total_reward += rewards
         total_loss += loss
+        if i%300 == 0 and i is not 0:
+            epsilon = max(min_epsilon, epsilon*decay)
         if i%1000 == 0 and i is not 0:
             print('Total Reward:', total_reward)
             print('Total Loss:',total_loss)
