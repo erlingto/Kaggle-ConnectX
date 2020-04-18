@@ -8,6 +8,7 @@ import network
 import torch.nn as nn
 import torch
 import environment
+import agents
 
 def plot_grad_flow(named_parameters):
     ave_grads = []
@@ -21,8 +22,8 @@ def plot_grad_flow(named_parameters):
     plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
     plt.xlim(xmin=0, xmax=len(ave_grads))
     plt.xlabel("Layers")
-    plt.ylabel("average gradient")
-    plt.title("Gradient flow")
+    plt.ylabel("Average Gradient")
+    plt.title("Gradient Flow")
     plt.grid(True)
     return plt
 
@@ -30,11 +31,11 @@ def plot_grad_flow(named_parameters):
 class ConnectXNetwork2(nn.Module):
     def __init__(self, num_states, num_actions):
         super(ConnectXNetwork2, self).__init__()
-        self.fc1 = nn.Linear(num_states+1, 128)
+        self.fc1 = nn.Linear(num_states, 128)
         self.fc2 = nn.Linear(128, 128)
         self.fc3 = nn.Linear(128, 128)
         self.fc4 = nn.Linear(128, 128)
-        self.fc5 = nn.Linear(128, num_actions)
+        self.fc5 = nn.Linear(128 , num_actions)
     
     def forward(self, x):   
         x = torch.sigmoid(self.fc1(x))
@@ -44,7 +45,36 @@ class ConnectXNetwork2(nn.Module):
         x = self.fc5(x)
         return x 
 
+class OpponentDQN:
+    def __init__(self, num_states, num_actions):
+        self.num_actions = num_actions
+        self.model = ConnectXNetwork2(num_states, num_actions)
+        self.mark = 0
+        self.name = 0
+        
+    def predict(self, inputs):
+        return self.model(torch.from_numpy(inputs).float())
     
+    def preprocess(self, state):
+        result = state[:]
+        return result
+
+    def get_action(self, state, epsilon):
+        if np.random.random() < epsilon:
+            return(int(np.random.choice([c for c in range(self.num_actions) if state[c] == 0])))
+        else:
+            prediction = self.predict(np.atleast_2d(self.preprocess(state)))[0].detach().numpy()
+            for i in range(self.num_actions):
+                if state[i] != 0:
+                    prediction[i] = -1e7
+            return int(np.argmax(prediction))  
+    
+    def load_weights(self, path):
+        self.model.load_state_dict(torch.load(path))
+        self.name = path
+
+
+
 class DQN2:
     def __init__(self, num_states, num_actions, gamma, max_exp, min_exp, batch_size, learning_rate):
         self.num_actions = num_actions
@@ -53,6 +83,8 @@ class DQN2:
         self.model = ConnectXNetwork2(num_states, num_actions)
         self.optimizer = optim.Adam(self.model.parameters() ,lr = learning_rate)
         self.criterion = nn.MSELoss()
+        self.mark = 0
+        self.name = 0
         
         self.experience = {'prev_obs' : [], 'a' : [], 'r': [], 'obs' : [], 'done': [] } 
 
@@ -63,17 +95,16 @@ class DQN2:
         return self.model(torch.from_numpy(inputs).float())
     
     def preprocess(self, state):
-        result = state.board[:]
-        result = np.append(result, state.mark)
+        result = state[:]
         return result
 
     def get_action(self, state, epsilon):
         if np.random.random() < epsilon:
-            return(int(np.random.choice([c for c in range(self.num_actions) if state.board[c] == 0])))
+            return(int(np.random.choice([c for c in range(self.num_actions) if state[c] == 0])))
         else:
             prediction = self.predict(np.atleast_2d(self.preprocess(state)))[0].detach().numpy()
             for i in range(self.num_actions):
-                if state.board[i] != 0:
+                if state[i] != 0:
                     prediction[i] = -1e7
             return int(np.argmax(prediction))  
     
@@ -86,6 +117,7 @@ class DQN2:
 
     def load_weights(self, path):
         self.model.load_state_dict(torch.load(path))
+        self.name = path
     def save_weights(self, path):
         torch.save(self.model.state_dict(), path)
     
@@ -123,10 +155,6 @@ class DQN2:
         self.optimizer.step()
         return loss
 
-class Observation:
-    def __init__(self, board, mark):
-        self.board = board
-        self.mark = mark
 
 class ConnectXEnvironment:
     def __init__(self, num_columns, num_rows, connect):
@@ -138,6 +166,16 @@ class ConnectXEnvironment:
         self.marks = [1, 2]
         self.done = 0
     
+    def flip(self):
+        flipped_board = np.array(self.board)
+        for i in range(len(self.board)):
+            if flipped_board[i] == self.marks[0]:
+                flipped_board[i] = self.marks[1]
+            elif flipped_board[i] == self.marks[1]:
+                flipped_board[i] = self.marks[0]
+
+        return flipped_board
+
     def check(self, position):
         column = position % self.num_columns 
         row = int((position - column) / self.num_columns)
@@ -154,7 +192,7 @@ class ConnectXEnvironment:
         mark = self.board[position]
         reward = [0, 0]
         done = 0
-
+        
         win_condition_up = 1
         win_condition_down = 1
         win_condition_dl = 1
@@ -205,7 +243,7 @@ class ConnectXEnvironment:
                         done = True
                         return done, reward 
 
-            ''' left '''
+            ''' Diagonal left '''
             if column +1 >= self.connect:
                 
                 position_left = position_left - 1
@@ -235,7 +273,7 @@ class ConnectXEnvironment:
                         if win_condition_ul == self.connect:
                             reward[mark - 1] = 1 
                             return done, reward
-            ''' up and down ''' 
+            ''' vertical X in a row ''' 
             if row <= self.num_rows-self.connect:
                 position_down = position_down + 1  * self.num_columns
                 if self.board[position_down] == mark:
@@ -246,21 +284,10 @@ class ConnectXEnvironment:
                         done = True
                         return done, reward
 
-            if row >= self.connect:
-                position_up = position_up - 1 * self.num_columns
-                if self.board[position_up] == mark:
-                    win_condition_up +=1
-                    if win_condition_up == self.connect:
-                        
-                        reward[mark - 1] = 1 
-                        done = True
-                        return done, reward
-
         return done, reward
 
 
     def step(self, action, mark):
-        reward = [0.5, 0.5]
         done = False
         valid = True
         if action < self.num_columns + 1:
@@ -272,20 +299,20 @@ class ConnectXEnvironment:
                             break
                 self.board[action + self.num_columns * (k-1)] = mark
                 done, reward = self.check(action + self.num_columns* (k-1))
-                observation = Observation(self.board, mark)
+                observations = np.array(self.board)
                 
-                return observation, valid, done, reward
+                return observations, valid, done, reward
             else:
                 print("action is full")
                 valid = False
-                observation = Observation(self.board, mark)
-                return observation, valid, done, reward
+                observations = np.array(self.board)
+                return observations, valid, done, reward
         else:
             print("action : ", action, end = '')
             print("is out of bounds")
             valid = False
-            observation = Observation(self.board, mark)
-            return observation, valid, done, reward
+            observations = np.array(self.board)
+            return observations, valid, done, reward
     
 
     def render(self):
@@ -321,38 +348,45 @@ class ConnectXEnvironment:
             trainee_mark = 2
     
 
-        observations = Observation(self.board, trainee_mark)
-        return observations
+        observations = np.array(self.board)
 
-    
-
-    def play_game(self):
-        done = False
-        mark = 1
-        
-        while not done:
-            print("player: ", mark)
-            self.render()
-            self.board, valid, done, reward = self.step(int(input("choose your action:")), mark)
-            print("done:", done)
-            if valid == True:
-                mark = mark % 2
-                mark += 1
-        self.render()
-            
-                
-
+        return trainee_mark, observations
 
 class ConnectXGym2(gym.Env):
-    def __init__(self, trainer):
+    def __init__(self):
         self.env = ConnectXEnvironment(7, 6, 4)
     
-        self.trainer = trainer
+        self.trainer = 0
+        
       
         self.columns = self.env.num_columns
         self.rows = self.env.num_rows
         self.actions = gym.spaces.Discrete(self.columns)
         self.positions = gym.spaces.Discrete(self.columns * self.rows)
+        self.list_of_trainers = ["fivenet4.0", "verticalbot", "fivenet_crusher"]
+        self.score_list = {i : 0 for i in self.list_of_trainers}
+        self.change_trainer_at_random()
+    
+    def reset_scores(self):
+        self.score_list = {i : 0 for i in self.list_of_trainers}
+    
+    def print_scores(self):
+        for i in self.score_list:
+            print(i, self.score_list[i])
+    
+    def change_trainer(self, trainer):
+        self.trainer = trainer
+
+    def change_trainer_at_random(self):
+        choice = np.random.choice(self.list_of_trainers)
+        if choice == "verticalbot":
+            trainer = agents.verticalBot(7,6)
+            self.change_trainer(trainer)
+        else:
+            trainer = OpponentDQN(42,7)
+            trainer.load_weights(choice)
+            self.change_trainer(trainer)
+        
 
     def step(self, action, mark):
         return self.env.step(action, mark)
@@ -368,35 +402,40 @@ class ConnectXGym2(gym.Env):
 
         env = self.env
         
-        observations = env.reset()
+        trainee_mark, observations = env.reset()
         
-        if observations.mark == 1:
+        if trainee_mark == 1:
+            TrainNet.mark = 1
+            self.trainer.mark = 2
             opp_mark = 2
-            trainee_mark = 1     
-
+                 
             while not done:
+                '''trainee makes a move '''
                 action = TrainNet.get_action(observations, epsilon)
 
-                prev_observations = observations
+                prev_observations = np.array(observations)
         
                 observations, valid, done, reward = env.step(action, trainee_mark)
+
                 reward = reward[trainee_mark-1]
                 if not done:
                     ''' opponent makes a move '''
+                    ''' flip_the board '''
+                    observations = env.flip()
                     opp_action = self.trainer.get_action(observations, 0)
 
                     observations, valid, done, reward = env.step(opp_action, opp_mark)
                     reward = reward[trainee_mark-1]
 
                 if done:
+                    
                     if reward == 1:
-                        reward = 1
+                        reward = 20
                     elif reward  == 0:
-                        reward = -1
+                        reward = -20
                     else :
                         reward = 0
-                        env.render()
-                   
+
                     rewards += reward
 
                 exp = {'prev_obs': prev_observations, 'a' : action, 'r': reward, 'obs': observations, 'done' : done }
@@ -408,18 +447,21 @@ class ConnectXGym2(gym.Env):
                     TargetNet.copy_weights(TrainNet)
             return rewards, loss
         else:
-            opp_mark = 1
-            trainee_mark = 2     
-            
+            TrainNet.mark = 2
+            self.trainer.mark = 1
+            opp_mark = 1     
+            ''' opponent makes a move '''
             opp_action = self.trainer.get_action(observations, 0)
 
             observations, valid, done, reward = env.step(opp_action, opp_mark)
             reward = reward[trainee_mark-1]
 
             while not done:
+                
+                observations = env.flip()
                 action = TrainNet.get_action(observations, epsilon)
 
-                prev_observations = observations
+                prev_observations = np.array(observations)
         
                 observations, valid, done, reward = env.step(action, trainee_mark)
                 reward = reward[trainee_mark-1]
@@ -431,13 +473,13 @@ class ConnectXGym2(gym.Env):
                     reward = reward[trainee_mark-1]
 
                 if done:
+                   
                     if reward == 1:
-                        reward = 1
+                        reward = 20
                     elif reward  == 0:
-                        reward = -1
+                        reward = -20
                     else :
                         reward = 0
-                        env.render()
                     rewards += reward
 
                 exp = {'prev_obs': prev_observations, 'a' : action, 'r': reward, 'obs': observations, 'done' : done }
@@ -450,75 +492,70 @@ class ConnectXGym2(gym.Env):
             return rewards, loss
 
 def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
-    total_reward = 0
     total_loss = 0
+    even_match = 0
     decay = 0.999
     for i in range(games):
         rewards, loss = gym.generate_data(TrainNet, TargetNet, epsilon, copy_step)
-        total_reward += rewards
+        if rewards == 0:
+            even_match += 1
+        gym.score_list[gym.trainer.name] += rewards
         total_loss += loss
-        if i%300 == 0 and i is not 0:
+        if i%250 == 0 and i != 0:
+            gym.change_trainer_at_random()
+        if i%50 == 0 and i !=  0:
             epsilon = max(min_epsilon, epsilon*decay)
-        if i%1000 == 0 and i is not 0:
-            print('Total Reward:', total_reward)
-            print('Total Loss:',total_loss)
-            total_reward = 0
+        if i%1000 == 0 and i != 0:
+            print('Total Loss:', total_loss)
+            print('Even matches:', even_match)
+            gym.print_scores()
+            gym.reset_scores()
+            even_match = 0
             total_loss = 0
-            print(epsilon)
+            print("epsilon", epsilon)
+        if i%10000 == 0 and i != 0:
             plt = plot_grad_flow(TrainNet.model.named_parameters())
             path = "plot" + str(i)+ ".png"
             plt.savefig(path)
 
 '''
-
-
 gamma = 0.99
 copy_step = 25
 max_exp = 100000
 min_exp = 100
-batch_size = 100
+batch_size = 32
 learning_rate = 0.00146
 epsilon = 0.5
-decay = 0.999999999999999
-min_epsilon = 0.05
+decay = 0.99999999
+min_epsilon = 0.08
 episodes = 200000
 
 precision = 7
 template_gym = environment.ConnectXGym()
-Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 
 TrainNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 TargetNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 
-training_gym = ConnectXGym2(Opponent)
-
-
-
-dojo(50000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
-Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-training_gym = ConnectXGym2(Opponent)
-TrainNet.save_weights('fivenet1.0')
+training_gym = ConnectXGym2()
+dojo(250000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+TrainNet.save_weights('variety2.0')
 Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 Opponent.load_weights('fivenet1.0')
+TargetNet.load_weights('fivenet1.0')
 training_gym = ConnectXGym2(Opponent)
-dojo(50000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+dojo(150000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
 TrainNet.save_weights('fivenet1.0')
 
 Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 Opponent.load_weights('fivenet1.0')
+TargetNet.load_weights('fivenet1.0')
 training_gym = ConnectXGym2(Opponent)
-dojo(50000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+dojo(150000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
 TrainNet.save_weights('fivenet1.0')
 Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 Opponent.load_weights('fivenet1.0')
+TargetNet.load_weights('fivenet1.0')
 training_gym = ConnectXGym2(Opponent)
-dojo(50000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+dojo(150000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
 TrainNet.save_weights('fivenet4.0')
-
-template_gym = environment.ConnectXGym()
-Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-Opponent.load_weights('fivenet1.0')
-import help_func
-help_func.playversus(Opponent)
-
 '''
