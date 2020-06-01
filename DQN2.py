@@ -668,7 +668,7 @@ def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
             plt.savefig(path)
 
 
-
+'''
 gamma = 0.99
 copy_step = 25
 max_exp = 100000
@@ -691,7 +691,7 @@ training_gym = ConnectXGym2()
 for i in range(30):
     dojo(1000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
     TrainNet.save_weights('lookahead_vs_verticalbot2')
-'''
+
 Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 Opponent.load_weights('fivenet1.0')
 TargetNet.load_weights('fivenet1.0')
