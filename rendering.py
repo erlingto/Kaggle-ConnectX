@@ -1,6 +1,7 @@
 import pygame
 from time import sleep
 import copy
+import game_environment
 import DQN2 
 from sys import exit
 
@@ -105,8 +106,8 @@ min_epsilon = 0.01
 episodes = 200000
 
 
-template_gym = DQN2.environment.ConnectXGym()
-Opponent = DQN2.DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+template_gym = DQN2.ConnectXGym2()
+Opponent = DQN2.DQN(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 Opponent.load_weights('lookahead_vs_verticalbot2')
-game = DQN2.ConnectXEnvironment(7,6,4)
+game = game_environment.ConnectXEnvironment(7,6,4)
 GameRendering(game,Opponent,0)

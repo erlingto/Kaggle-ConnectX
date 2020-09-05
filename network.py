@@ -1,27 +1,19 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-import gym
+import torch
 
-import matplotlib.pyplot as plt
-from tqdm.notebook import tqdm
-from kaggle_environments import evaluate, make
-
-class ConnectXNetwork(nn.Module):
+class ConnectXNetwork2(nn.Module):
     def __init__(self, num_states, num_actions):
-        super(ConnectXNetwork, self).__init__()
-        self.fc1 = nn.Linear(num_states+1, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_actions)
+        super(ConnectXNetwork2, self).__init__()
+        self.fc1 = nn.Linear(num_states, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3 = nn.Linear(128, 128)
+        self.fc4 = nn.Linear(128, 128)
+        self.fc5 = nn.Linear(128 , num_actions)
     
     def forward(self, x):   
         x = torch.sigmoid(self.fc1(x))
         x = torch.sigmoid(self.fc2(x))
-        x = self.fc3(x)
+        x = torch.sigmoid(self.fc3(x))
+        x = torch.sigmoid(self.fc4(x))
+        x = self.fc5(x)
         return x 
-    
-    
-
-
-

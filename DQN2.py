@@ -7,7 +7,7 @@ import torch.optim as optim
 import network
 import torch.nn as nn
 import torch
-import environment
+import game_environment
 import agents
 
 def plot_grad_flow(named_parameters):
@@ -27,31 +27,13 @@ def plot_grad_flow(named_parameters):
     plt.grid(True)
     return plt
 
-
-class ConnectXNetwork2(nn.Module):
-    def __init__(self, num_states, num_actions):
-        super(ConnectXNetwork2, self).__init__()
-        self.fc1 = nn.Linear(num_states, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, 128)
-        self.fc4 = nn.Linear(128, 128)
-        self.fc5 = nn.Linear(128 , num_actions)
-    
-    def forward(self, x):   
-        x = torch.sigmoid(self.fc1(x))
-        x = torch.sigmoid(self.fc2(x))
-        x = torch.sigmoid(self.fc3(x))
-        x = torch.sigmoid(self.fc4(x))
-        x = self.fc5(x)
-        return x 
-
 class OpponentDQN:
     def __init__(self, num_states, num_actions):
         self.num_actions = num_actions
-        self.model = ConnectXNetwork2(num_states, num_actions)
+        self.model = network.ConnectXNetwork2(num_states, num_actions)
         self.mark = 6
         self.name = 0
-        self.EVALenv = ConnectXEnvironment(7, 6, 4)
+        self.EVALenv = game_environment.ConnectXEnvironment(7, 6, 4)
         
     def predict(self, inputs):
         return self.model(torch.from_numpy(inputs).float())
@@ -106,17 +88,17 @@ class OpponentDQN:
 
 
 
-class DQN2:
+class DQN:
     def __init__(self, num_states, num_actions, gamma, max_exp, min_exp, batch_size, learning_rate):
         self.num_actions = num_actions
         self.batch_size = batch_size
         self.gamma = gamma
-        self.model = ConnectXNetwork2(num_states, num_actions)
+        self.model = network.ConnectXNetwork2(num_states, num_actions)
         self.optimizer = optim.Adam(self.model.parameters() ,lr = learning_rate)
         self.criterion = nn.MSELoss()
         self.mark = 1   #placeholder for verticalbot funticonality
         self.name = 0   
-        self.EVALenv = ConnectXEnvironment(7, 6, 4)
+        self.EVALenv = game_environment.ConnectXEnvironment(7, 6, 4)
         
         self.experience = {'prev_obs' : [], 'a' : [], 'r': [], 'obs' : [], 'done': [] } 
 
@@ -125,6 +107,7 @@ class DQN2:
 
     def predict(self, inputs):
         return self.model(torch.from_numpy(inputs).float())
+    
     
     def preprocess(self, state):
         result = state[:]
@@ -194,9 +177,6 @@ class DQN2:
         best_value = -1e7
         best_action = 20 #want the shit to crash if an action isnt selected through negamax
         possible_actions = [i for i in range(self.num_actions) if state[i] == 0]
-        #value = np.zeros(self.num_actions)
-        # for i in range(len(value)):
-          #  value[i] = -1e7
         value = TargetNet.predict(state).detach().numpy()
         for i in range(len(value)):
             if value[i] > 20:
@@ -212,9 +192,7 @@ class DQN2:
         new_state, valid, done, reward = self.EVALenv.step(action, mark)
         mark = mark % 2 +1
         if done:
-            #print("DONE")
             value = reward[mark-1]
-            #print("value", value)
             return value  
         elif depth == 0:
             prediction = TargetNet.predict(np.atleast_2d(self.preprocess(new_state)))[0].detach().numpy()
@@ -278,8 +256,10 @@ class DQN2:
         
         '''  !!!    '''
         actions = np.expand_dims(actions, axis = 1)
+        print("actions", actions)
         
         actions_one_hot = torch.FloatTensor(self.batch_size, self.num_actions).zero_()
+        print("actions_one_hot", actions_one_hot)
         actions_one_hot = actions_one_hot.scatter_(1, torch.LongTensor(actions), 1)
         selected_action_values = torch.sum(self.predict(states) * actions_one_hot, dim = 1)
         
@@ -293,225 +273,10 @@ class DQN2:
         return loss
 
 
-class ConnectXEnvironment:
-    def __init__(self, num_columns, num_rows, connect):
-        self.connect = connect
-        self.num_columns = num_columns
-        self.num_rows = num_rows
-        self.size = num_rows * num_columns
-        self.board = np.zeros(num_columns* num_rows, dtype = int)
-        self.marks = [1, 2]
-        self.done = False
-    
-    def flip(self):
-        flipped_board = np.array(self.board)
-        for i in range(len(self.board)):
-            if flipped_board[i] == self.marks[0]:
-                flipped_board[i] = self.marks[1]
-            elif flipped_board[i] == self.marks[1]:
-                flipped_board[i] = self.marks[0]
-
-        return flipped_board
-    def check(self, position):
-        mark = self.board[position]
-        reward = [0, 0]
-        done = False
-
-        j = 0
-        for i in range(self.num_columns):
-            if not self.board[i] == 0:
-                j +=1
-                if j == self.num_columns:
-                    done = True
-                    reward = [0, 0]
-                    return done, reward
-
-        column = position % self.num_columns 
-        row = int((position - column) / self.num_columns)
-        
-        inverse_row = self.num_rows-1-row
-        
-        diagonal = column + row
-        inverse_diagonal = inverse_row + column
-        
-       
-        if diagonal < self.num_rows:
-            diagonal_bottom = diagonal * self.num_columns 
-        else:
-            diagonal_bottom =  self.num_columns * (self.num_rows-1) + (diagonal- self.num_rows) + 1 
-        
-        if inverse_diagonal < self.num_rows:
-            inverse_diagonal_row = inverse_diagonal
-            inverse_diagonal_column = 0
-            diagonal_top = self.num_columns * (self.num_rows - inverse_diagonal_row-1)
-        else:
-            
-            inverse_diagonal_column = inverse_diagonal - self.num_rows + 1
-            inverse_diagonal_row = self.num_rows - 1
-            diagonal_top = inverse_diagonal - self.num_rows + 1
-
-        diagonal_column = diagonal_bottom % self.num_columns 
-        diagonal_row = int((diagonal_bottom - diagonal_column) / self.num_columns)
-
-
-        ''' positions '''
-        position_diagonal_ur = diagonal_bottom 
-        
-        position_diagonal_dr = diagonal_top
-
-        
-        position_right = row * self.num_columns
-        position_vertical = column
-
-        ''' range '''
-        range_ur = min(self.num_columns-diagonal_column, diagonal_row+1)
-        range_dr = min(self.num_columns-inverse_diagonal_column, inverse_diagonal_row+1)
-        
-
-       
-        range_horizontal = self.num_columns
-        range_vertical = self.num_rows
-
-        ''' conditions / counters '''
-        win_condition_dr = 0
-        win_condition_ur = 0
-        win_condition_r = 0
-        win_condition_down = 0
-
-        for i in range(max(range_ur, range_dr, range_horizontal, range_vertical)):
-            if range_ur >= i+1 and range_ur >= self.connect:
-                if self.board[position_diagonal_ur] == mark:
-                    win_condition_ur +=1
-                else:
-                    win_condition_ur = 0
-                if win_condition_ur == self.connect:
-                    reward[mark - 1] = 20 
-                    reward[mark % 2 + 1 - 1] = -20
-                  
-                    done = True
-                    return done, reward
-                
-                position_diagonal_ur = position_diagonal_ur - 1 * self.num_columns + 1
-                
-            if range_dr >= i+1 and range_dr >= self.connect:
-                if self.board[position_diagonal_dr] == mark:
-                    win_condition_dr +=1
-                    
-                else:
-                    win_condition_dr = 0
-                if win_condition_dr == self.connect:
-                    reward[mark - 1] = 20 
-                    reward[mark % 2 + 1 - 1] = -20 
-                    
-                    done = True
-                    return done, reward
-                
-                
-                position_diagonal_dr = position_diagonal_dr + 1 * self.num_columns + 1
-                
-                
-            if range_horizontal >= i+1 and range_horizontal >= self.connect:
-                if self.board[position_right] == mark:
-                    win_condition_r +=1
-                else:
-                    win_condition_r = 0
-                if win_condition_r == self.connect:
-                    reward[mark - 1] = 20 
-                    reward[mark % 2 + 1 - 1] = -20 
-                    
-                    done = True
-                    return done, reward
-                position_right = position_right + 1
-                
-            if range_vertical >= i+1 and range_vertical >= self.connect:
-                if self.board[position_vertical] == mark:
-                    win_condition_down +=1
-                else:
-                    win_condition_down = 0
-                if win_condition_down == self.connect:
-                    reward[mark - 1] = 20 
-                    reward[mark % 2 + 1 - 1] = -20 
-                    
-                    done = True
-                    return done, reward
-                position_vertical = position_vertical + 1  * self.num_columns
-                
-                
-        return done, reward
-
-    def step(self, action, mark):
-        done = False
-        valid = True
-        if action < self.num_columns + 1:
-            if self.board[action] == 0:
-                k = 0
-                while self.board[action + self.num_columns * k] == 0:
-                        k += 1
-                        if k == self.num_rows:
-                            break
-                self.board[action + self.num_columns * (k-1)] = mark
-                done, reward = self.check(action + self.num_columns* (k-1))
-                observations = np.array(self.board)
-                
-                return observations, valid, done, reward
-            else:
-                print("action is full")
-                valid = False
-                observations = np.array(self.board)
-                self.render()
-                print(action)
-                return observations, valid, done, reward
-        else:
-            print("action : ", action, end = '')
-            print("is out of bounds")
-            valid = False
-            observations = np.array(self.board)
-            return observations, valid, done, reward
-    
-
-    def render(self):
-        for k in range(self.num_columns * 4 +1):
-                if k%4 == 0:
-                    print('+', end = '')
-                else:
-                    print('-', end = '')
-        print('\n', end = '')
-        for i in range(self.num_rows):
-            for j in range(self.num_columns):
-                print('|', ' ', sep = '', end = '')
-                print(self.board[i*self.num_columns + j] ,' ', end = '', sep= '')
-            print('| \n', end = '')
-            for k in range(self.num_columns * 4 +1):
-                if k%4 == 0:
-                    print('+', end = '')
-                else:
-                    print('-', end = '')
-            print('\n', end = '')
-            
-    def reset(self):
-        self.board = np.zeros(self.num_columns* self.num_rows, dtype = int)
-        self.marks = [1, 2]
-        self.done = False
-
-        coinflip = np.random.random()
-        
-        if coinflip < 0.5:
-            trainee_mark = 1
-
-        else:
-            trainee_mark = 2
-    
-
-        observations = np.array(self.board)
-
-        return trainee_mark, observations
-    
-    def copy_board(self, board):
-        self.board = np.array(board)
 
 class ConnectXGym2(gym.Env):
     def __init__(self):
-        self.env = ConnectXEnvironment(7, 6, 4)
+        self.env = game_environment.ConnectXEnvironment(7, 6, 4)
     
         self.trainer = 0
         
@@ -667,8 +432,7 @@ def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
             path = "plot" + str(i)+ ".png"
             plt.savefig(path)
 
-
-'''
+"""
 gamma = 0.99
 copy_step = 25
 max_exp = 100000
@@ -681,17 +445,21 @@ min_epsilon = 0.01
 episodes = 200000
 
 precision = 7
-template_gym = environment.ConnectXGym()
+template_gym = ConnectXGym2()
 
-TrainNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-TargetNet = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+TrainNet = DQN(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
+TargetNet = DQN(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 TrainNet.load_weights('lookahead_vs_verticalbot2')
 TargetNet.load_weights('lookahead_vs_verticalbot2')
 training_gym = ConnectXGym2()
 for i in range(30):
     dojo(1000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
     TrainNet.save_weights('lookahead_vs_verticalbot2')
+    TrainNet.load_weights('lookahead_vs_verticalbot2')
 
+"""
+
+'''
 Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 Opponent.load_weights('fivenet1.0')
 TargetNet.load_weights('fivenet1.0')
