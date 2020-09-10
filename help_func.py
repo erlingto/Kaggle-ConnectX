@@ -1,4 +1,3 @@
-import environment
 import types
 import torch
 import network

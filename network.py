@@ -11,9 +11,9 @@ class ConnectXNetwork2(nn.Module):
         self.fc5 = nn.Linear(128 , num_actions)
     
     def forward(self, x):   
-        x = torch.sigmoid(self.fc1(x))
-        x = torch.sigmoid(self.fc2(x))
-        x = torch.sigmoid(self.fc3(x))
-        x = torch.sigmoid(self.fc4(x))
+        x = nn.functional.leaky_relu(self.fc1(x))
+        x = nn.functional.leaky_relu(self.fc2(x))
+        x = nn.functional.leaky_relu(self.fc3(x))
+        x = nn.functional.leaky_relu(self.fc4(x))
         x = self.fc5(x)
         return x 

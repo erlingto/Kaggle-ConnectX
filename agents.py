@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from tqdm.notebook import tqdm
 import network
 import math
-import environment
 
 
 class verticalBot():

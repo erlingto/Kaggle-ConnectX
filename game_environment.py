@@ -92,8 +92,8 @@ class ConnectXEnvironment:
                 else:
                     win_condition_ur = 0
                 if win_condition_ur == self.connect:
-                    reward[mark - 1] = 20 
-                    reward[mark % 2 + 1 - 1] = -20
+                    reward[mark - 1] = 1 
+                    reward[mark % 2 + 1 - 1] = -1
                   
                     done = True
                     return done, reward
@@ -107,8 +107,8 @@ class ConnectXEnvironment:
                 else:
                     win_condition_dr = 0
                 if win_condition_dr == self.connect:
-                    reward[mark - 1] = 20 
-                    reward[mark % 2 + 1 - 1] = -20 
+                    reward[mark - 1] = 1 
+                    reward[mark % 2 + 1 - 1] = -1 
                     
                     done = True
                     return done, reward
@@ -123,8 +123,8 @@ class ConnectXEnvironment:
                 else:
                     win_condition_r = 0
                 if win_condition_r == self.connect:
-                    reward[mark - 1] = 20 
-                    reward[mark % 2 + 1 - 1] = -20 
+                    reward[mark - 1] = 1 
+                    reward[mark % 2 + 1 - 1] = -1 
                     
                     done = True
                     return done, reward
@@ -136,8 +136,8 @@ class ConnectXEnvironment:
                 else:
                     win_condition_down = 0
                 if win_condition_down == self.connect:
-                    reward[mark - 1] = 20 
-                    reward[mark % 2 + 1 - 1] = -20 
+                    reward[mark - 1] = 1 
+                    reward[mark % 2 + 1 - 1] = -1 
                     
                     done = True
                     return done, reward

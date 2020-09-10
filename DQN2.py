@@ -54,10 +54,10 @@ class OpponentDQN:
         elif depth == 0:
             prediction = self.predict(np.atleast_2d(self.preprocess(new_state)))[0].detach().numpy()
             value = max(prediction)
-            if value > 20:
-                value = 19.999
-            elif value < -20:
-                value = -19.99
+            if value > 1:
+                value = 0.999
+            elif value < -1:
+                value = -0.999
             return value
         else:
             value = -1e7
@@ -71,7 +71,7 @@ class OpponentDQN:
         if np.random.random() < epsilon:
             return(int(np.random.choice([c for c in range(self.num_actions) if state[c] == 0])))
         else:
-            best_value = -1e7
+            best_value = -1e7   
             best_action = 20 #want the shit to crash if an action isnt selected through negamax
             possible_actions = [i for i in range(self.num_actions) if state[i] == 0]
             for action in possible_actions:
@@ -127,7 +127,6 @@ class DQN:
     def lookahead(self, state, action, mark, alpha, beta, depth = 2):
         self.EVALenv.copy_board(state)
         new_state, valid, done, reward = self.EVALenv.step(action, mark)
-        first_action = action
         mark = mark % 2 +1
         if done:
             value = reward[mark-1]
@@ -229,7 +228,7 @@ class DQN:
         torch.save(self.model.state_dict(), path)
     
     def copy_weights(self, TrainNet):
-        self.model.load_state_dict(TrainNet.state_dict())
+        self.model.load_state_dict(TrainNet.model.state_dict())
 
     def train(self, TargetNet):
         if len(self.experience['prev_obs']) < self.min_exp:
@@ -241,13 +240,16 @@ class DQN:
         rewards = np.asarray([self.experience['r'][i] for i in ids])
         next_states = np.asarray([self.preprocess(self.experience['obs'][i]) for i in ids])
         dones = np.asarray([self.experience['done'][i] for i in ids])       
-        
+        next_value = np.max(TargetNet.predict(next_states).detach().numpy(), axis=1)
+        """
         next_value = np.zeros(self.batch_size)
         k = 0
+
         for next_state in next_states:
             next_value[k] = np.max(self.get_values(next_state, TargetNet))
             k+=1
-       
+        """
+
         ''' Q - learning aspect '''
         actual_values = np.where(dones, rewards, rewards+self.gamma*next_value)
       
@@ -256,10 +258,8 @@ class DQN:
         
         '''  !!!    '''
         actions = np.expand_dims(actions, axis = 1)
-        print("actions", actions)
         
         actions_one_hot = torch.FloatTensor(self.batch_size, self.num_actions).zero_()
-        print("actions_one_hot", actions_one_hot)
         actions_one_hot = actions_one_hot.scatter_(1, torch.LongTensor(actions), 1)
         selected_action_values = torch.sum(self.predict(states) * actions_one_hot, dim = 1)
         
@@ -285,7 +285,7 @@ class ConnectXGym2(gym.Env):
         self.rows = self.env.num_rows
         self.actions = gym.spaces.Discrete(self.columns)
         self.positions = gym.spaces.Discrete(self.columns * self.rows)
-        self.list_of_trainers = ["variety14.0" ,"variety5.0", "variety3.0", "variety4.0","variety8.0", "variety9.0", "variety19.0", "lookahead_vs_verticalbot1","variety20.0", "variety12.0", "variety13.0"]
+        self.list_of_trainers = ["new2", "new", "new1"]
         self.score_list = {i : 0 for i in self.list_of_trainers}
         self.games_list = {i : 0 for i in self.list_of_trainers}
         self.change_trainer_at_random()
@@ -320,7 +320,6 @@ class ConnectXGym2(gym.Env):
 
     def generate_data(self, TrainNet, TargetNet, epsilon, copy_step):
         rewards = 0
-        iter = 0
         opp_action = 0
         done = False
 
@@ -358,9 +357,7 @@ class ConnectXGym2(gym.Env):
                 TrainNet.add_experience(exp)
 
                 loss = TrainNet.train(TargetNet)
-                iter += 1
-                if iter % copy_step == 0:
-                    TargetNet.copy_weights(TrainNet)
+
             return rewards, loss
         else:
             TrainNet.mark = 2
@@ -394,15 +391,15 @@ class ConnectXGym2(gym.Env):
                 TrainNet.add_experience(exp)
 
                 loss = TrainNet.train(TargetNet)
-                iter += 1
-                if iter % copy_step == 0:
-                    TargetNet.copy_weights(TrainNet)
             return rewards, loss
 
 def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
     total_loss = 0
     even_match = 0
-    decay = 0.999
+    test_match = game_environment.ConnectXEnvironment(7, 6, 4)
+    _, test_state = test_match.reset()
+    print(TrainNet.predict(test_state))    
+    decay = 0.9995
     for i in range(games):
         rewards, loss = gym.generate_data(TrainNet, TargetNet, epsilon, copy_step)
         if rewards == 0:
@@ -411,11 +408,12 @@ def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
         print("motstander", gym.trainer.mark)
         print("SCORE:", rewards)
         gym.score_list[gym.trainer.name] += rewards
-        gym.games_list[gym.trainer.name] += 20
+        gym.games_list[gym.trainer.name] += 1
         total_loss += loss
         print(i)
         if i%10 == 0 and i != 0:
             gym.change_trainer_at_random()
+            print(TrainNet.predict(test_state))  
         if i%2 == 0 and i !=  0:
             epsilon = max(min_epsilon, epsilon*decay)
         if i%100 == 0 and i != 0:
@@ -427,56 +425,10 @@ def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
             total_loss = 0
             print("games", i)
             print("epsilon", epsilon)
+        if i % copy_step == 0:
+            TargetNet.copy_weights(TrainNet)
         if i%50000 == 0 and i != 0:
             plt = plot_grad_flow(TrainNet.model.named_parameters())
             path = "plot" + str(i)+ ".png"
             plt.savefig(path)
 
-"""
-gamma = 0.99
-copy_step = 25
-max_exp = 100000
-min_exp = 100
-batch_size = 32
-learning_rate = 0.00146
-epsilon = 0.05
-decay = 0.999
-min_epsilon = 0.01
-episodes = 200000
-
-precision = 7
-template_gym = ConnectXGym2()
-
-TrainNet = DQN(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-TargetNet = DQN(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-TrainNet.load_weights('lookahead_vs_verticalbot2')
-TargetNet.load_weights('lookahead_vs_verticalbot2')
-training_gym = ConnectXGym2()
-for i in range(30):
-    dojo(1000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
-    TrainNet.save_weights('lookahead_vs_verticalbot2')
-    TrainNet.load_weights('lookahead_vs_verticalbot2')
-
-"""
-
-'''
-Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-Opponent.load_weights('fivenet1.0')
-TargetNet.load_weights('fivenet1.0')
-training_gym = ConnectXGym2(Opponent)
-dojo(150000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
-TrainNet.save_weights('fivenet1.0')
-
-Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-Opponent.load_weights('fivenet1.0')
-TargetNet.load_weights('fivenet1.0')
-training_gym = ConnectXGym2(Opponent)
-dojo(150000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
-TrainNet.save_weights('fivenet1.0')
-Opponent = DQN2(template_gym.positions.n, template_gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-Opponent.load_weights('fivenet1.0')
-TargetNet.load_weights('fivenet1.0')
-training_gym = ConnectXGym2(Opponent)
-dojo(150000, training_gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
-TrainNet.save_weights('fivenet4.0')
-'''
