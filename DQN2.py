@@ -285,7 +285,7 @@ class ConnectXGym2(gym.Env):
         self.rows = self.env.num_rows
         self.actions = gym.spaces.Discrete(self.columns)
         self.positions = gym.spaces.Discrete(self.columns * self.rows)
-        self.list_of_trainers = ["new2", "new", "new1"]
+        self.list_of_trainers = ["new2", "new", "new1", "new3", "new4"]
         self.score_list = {i : 0 for i in self.list_of_trainers}
         self.games_list = {i : 0 for i in self.list_of_trainers}
         self.change_trainer_at_random()
@@ -404,7 +404,6 @@ def dojo(games, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step):
         rewards, loss = gym.generate_data(TrainNet, TargetNet, epsilon, copy_step)
         if rewards == 0:
             even_match += 1
-        gym.render()
         print("motstander", gym.trainer.mark)
         print("SCORE:", rewards)
         gym.score_list[gym.trainer.name] += rewards

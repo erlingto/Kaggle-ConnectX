@@ -9,15 +9,15 @@ from kaggle_environments import evaluate, make, utils
 
 gym = DQN2.ConnectXGym2()
 
-gamma = 0.88 
+gamma = 0.95 
 copy_step = 7
 max_exp = 1000
 min_exp = 100
 batch_size = 32
-learning_rate = 0.0000134
-epsilon = 0.5
+learning_rate = 0.000000534
+epsilon = 0.03
 decay = 0.9999
-min_epsilon = 0.1
+min_epsilon = 0.02
 episodes = 200000
 
 
@@ -25,9 +25,10 @@ precision = 7
 
 TrainNet = DQN2.DQN(gym.positions.n, gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
 TargetNet = DQN2.DQN(gym.positions.n, gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
-
-DQN2.dojo(80000, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
-TrainNet.save_weights('new3')
+TargetNet.load_weights('new5')
+TrainNet.load_weights('new5')
+DQN2.dojo(5000, gym, TrainNet, TargetNet, min_epsilon, epsilon, copy_step)
+TrainNet.save_weights('new5')
 
 """
 Net = DQN2.DQN(gym.positions.n, gym.actions.n, gamma, max_exp, min_exp, batch_size, learning_rate)
